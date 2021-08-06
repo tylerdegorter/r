@@ -28,9 +28,9 @@ ProphetForecast <- function(df, num_periods) {
   # If "date" and "metric" are not columns, the script breaks and throws an error indicating what went wrong.
   if (date_check == 0 & metric_check == 0) {
     stop("No columns named 'date' or 'metric'; rename to those and try again")
-  } else if (date_check == 0){
+  } else if (date_check == 0) {
     stop("No column named 'date'; rename and try again")
-  } else if (metric_check == 0){
+  } else if (metric_check == 0) {
     stop("No column named 'metric'; rename and try again")
   }
   
