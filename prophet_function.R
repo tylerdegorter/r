@@ -1,32 +1,32 @@
 ##############################################################################################################################
-# This file provides a user defied function for using Facebook's Prophet package (https://facebook.github.io/prophet/). Given
-#   that prophet has many input parameters that we may not need, the function takes 2 inputs: a data frame and the number of
-#   periods to forecast. The default holiday file is used, only using US, CN, and IN as holiday countries since it reduces 
-#   processing time and covers most applicable holidays anyways. If we feed the function multiple columns to forecast, 
-#   it subsets those dimensions and loops through each individually to generate a data frame of forecasts for all outputs.
-# 
-# TODO (Tyler): The current output is a data frame of forecasts. Change the output into a list with the forecasts being one list
-#   element, and the intervals and holiday effects being another list element.
-# TODO (Tyler): Consider providing more customized lower and upper bounds for holidays
-#
-# @param df: the input data frame to pass into prophet. Must have a date column called "date" and a metric to forecast
-#   called "metric"; all other added dimensions are optional.
-# @param num_periods: the number of days to forecast after the end of the training data. Can set to a specific date using:
-#   as.Date('YYYY-MM-DD') - max(df$date)
+#' This file provides a user defied function for using Facebook's Prophet package (https://facebook.github.io/prophet/). Given
+#'   that prophet has many input parameters that we may not need, the function takes 2 inputs: a data frame and the number of
+#'   periods to forecast. The default holiday file is used, only using US, CN, and IN as holiday countries since it reduces 
+#'   processing time and covers most applicable holidays anyways. If we feed the function multiple columns to forecast, 
+#'   it subsets those dimensions and loops through each individually to generate a data frame of forecasts for all outputs.
+#' 
+#' TODO (Tyler): The current output is a data frame of forecasts. Change the output into a list with the forecasts being one list
+#'   element, and the intervals and holiday effects being another list element.
+#' TODO (Tyler): Consider providing more customized lower and upper bounds for holidays
+#'
+#' @param df: the input data frame to pass into prophet. Must have a date column called "date" and a metric to forecast
+#'   called "metric"; all other added dimensions are optional.
+#' @param num_periods: the number of days to forecast after the end of the training data. Can set to a specific date using:
+#'   as.Date('YYYY-MM-DD') - max(df$date)
 ##############################################################################################################################
 
 # Call package
 require(prophet)
 
 # Create function
-prophet_forecast <- function(df, num_periods){
+ProphetForecast <- function(df, num_periods) {
   
   ### Checks to make sure the column names are correct.
   date_check = sum(names(df) %in% 'date')
   metric_check = sum(names(df) %in% 'metric')
   
   # If "date" and "metric" are not columns, the script breaks and throws an error indicating what went wrong.
-  if(date_check == 0 & metric_check == 0){
+  if (date_check == 0 & metric_check == 0) {
     stop("No columns named 'date' or 'metric'; rename to those and try again")
   } else if (date_check == 0){
     stop("No column named 'date'; rename and try again")
@@ -55,15 +55,15 @@ prophet_forecast <- function(df, num_periods){
                  names(df)[!(date_col | metric_col)])
   
   # Re-order based on the designated ordering above so the script runs properly.
-  df <- df[,col_names]
+  df <- df[, col_names]
   
   ### Get unique values to loop by and loop
   num_columns <- length(names(df))
-  unique_dims <- unique(df[,(3:num_columns)])
+  unique_dims <- unique(df[, (3:num_columns)])
   output_df <- data.frame()
   
   # Build loop from 1 to number of unique dimensions to forecast by
-  for (i in 1:nrow(unique_dims)){
+  for (i in 1:nrow(unique_dims)) {
     
     # Create temp table
     df_temp <- df
@@ -72,7 +72,7 @@ prophet_forecast <- function(df, num_periods){
     #   a the third column (first one after date & metric), return all values that show up in the third row of the 
     #   unique dims table. Continue with the next column and so on until we've fully subsetted down the data table.
     # TODO (Tyler): consider changing to an inner join to increase processing speed. 
-    for (j in 3:num_columns){
+    for (j in 3:num_columns) {
       df_temp <- df_temp[df_temp[, j] == unique_dims[i, j-2], ]
     }
     
@@ -86,7 +86,7 @@ prophet_forecast <- function(df, num_periods){
                      holidays = holiday_file)
     forecast <- predict(model, 
                         make_future_dataframe(model, 
-                                              periods = num_periods))[,c("ds", "yhat")]
+                                              periods = num_periods))[, c("ds", "yhat")]
     
     # Plots components of the model (commenting out for now, consider putting back as a list element)
     # prophet_plots <- prophet_plot_components(model, forecast)
