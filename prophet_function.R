@@ -15,11 +15,14 @@
 #'   as.Date('YYYY-MM-DD') - max(df$date)
 ##############################################################################################################################
 
-# Call package
-require(prophet)
+# Call packages
+suppressMessages(
+  require(prophet),
+  require(tidyverse)
+)
 
 # Create function
-ProphetForecast <- function(df, num_periods) {
+ProphetForecast <- function(df, num_periods, include_hist) {
   
   ### Checks to make sure the column names are correct.
   date_check = sum(names(df) %in% 'date')
@@ -40,9 +43,17 @@ ProphetForecast <- function(df, num_periods) {
   # (ie. Christmas, Chinese New Year, Diwali). 
   holiday_file <- generated_holidays %>%
     # change ds to date, and add window range (blunt now, can update to specific holidays)
-    mutate(ds = as.Date(ds), lower_window = -1, upper_window = 5) %>% 
+    mutate(ds = as.Date(ds), 
+           lower_window = -1, 
+           upper_window = 5, 
+           country = as.character(country)) %>% 
     # only grab the main countries to limit processing time
-    filter(ds >= min(input_data_a_s$ds) & ds <= max(input_data_a_s$ds) & country %in% c("US", "CN", "IN")) 
+    filter(ds >= min(df$date) &
+             ds <= as.Date(max(df$date)) + num_periods & 
+             country %in% c("US", "CN", "IN")
+           ) %>%
+    select(-year, -country) %>%
+    unique()
   
   ### Re-order columns
   # find where date and metric columns are in the input
@@ -62,8 +73,14 @@ ProphetForecast <- function(df, num_periods) {
   unique_dims <- unique(df[, (3:num_columns)])
   output_df <- data.frame()
   
+  # get start time before any loops to determine how long things take
+  overall_start_time <- Sys.time()
+  
   # Build loop from 1 to number of unique dimensions to forecast by
   for (i in 1:nrow(unique_dims)) {
+    
+    # get loop start time to determine length of this loop
+    loop_start_time <- Sys.time()
     
     # Create temp table
     df_temp <- df
@@ -73,7 +90,7 @@ ProphetForecast <- function(df, num_periods) {
     #   unique dims table. Continue with the next column and so on until we've fully subsetted down the data table.
     # TODO (Tyler): consider changing to an inner join to increase processing speed. 
     for (j in 3:num_columns) {
-      df_temp <- df_temp[df_temp[, j] == unique_dims[i, j-2], ]
+      df_temp <- df_temp[df_temp[, j] == unique_dims[i, j - 2], ]
     }
     
     # Change column names so it works with prophet, since prophet needs "ds" not "date", and "y" not "metric"
@@ -82,8 +99,10 @@ ProphetForecast <- function(df, num_periods) {
     # Run the forecast. First build the model, passing in the subsetted temp file and holiday file, and then
     #   run the prediction, which uses the model and number of periods to forecast. Only return the date and
     #   predicted value "yhat", although consider opening up more.
-    model <- prophet(df_temp, 
-                     holidays = holiday_file)
+    model <- df_temp %>% 
+      prophet(holidays = holiday_file) %>% 
+      suppressMessages()
+    
     forecast <- predict(model, 
                         make_future_dataframe(model, 
                                               periods = num_periods))[, c("ds", "yhat")]
@@ -95,13 +114,25 @@ ProphetForecast <- function(df, num_periods) {
     #   we bring back in the other dimensions used to subset this particular loop of the time series and 
     #   add those columns back. 
     for (j in 3:num_columns){
-      forecast <- cbind(forecast, unique_dims[i,j-2])
+      forecast <- cbind(forecast, unique_dims[i, j - 2])
     }
     names(forecast) <- names(df_temp)
     output_df <- rbind(output_df, forecast)
     
+    # get loop end time to determine length of this loop
+    loop_end_time <- Sys.time()
+    
     # So we know how long things take, print the loop we are on, as well as how many there are to go.
-    print(paste('running loop', i, 'of', nrow(unique_dims)))
+    writeLines(
+      c(
+        paste('done with loop', i, 'of', nrow(unique_dims)),
+        paste('loop', i, 'took', format(loop_end_time - loop_start_time)),
+        paste('estimated finish time:', 
+              overall_start_time + ((loop_end_time - overall_start_time) * (nrow(unique_dims) / i))
+        )
+      )
+    )
+    cat("\n")
     
   }
   
@@ -112,6 +143,17 @@ ProphetForecast <- function(df, num_periods) {
   output_df_fcst_only <- output_df %>%
     filter(date > max(df$date))
   
-  return(output_df_fcst_only)
+  # If we want to include history, append it to the data below. Otherwise only return output
+  if (include_hist == TRUE) {
+    output_df %>%
+      filter(date > max(df$date)) %>%
+      rbind(df) %>%
+      mutate(flag = if_else(date > max(df$date), 'Forecast', 'History')) %>%
+      return()
+  } else {
+    output_df %>%
+      filter(date > max(df$date)) %>%
+      return()
+  }
   
 }
