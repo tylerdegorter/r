@@ -98,9 +98,10 @@ ProphetForecast <- function(df, num_periods, include_hist) {
     
     # Run the forecast. First build the model, passing in the subsetted temp file and holiday file, and then
     #   run the prediction, which uses the model and number of periods to forecast. Only return the date and
-    #   predicted value "yhat", although consider opening up more.
+    #   predicted value "yhat". Set uncertainty.samples to 0 to avoid prophet sampling the distribution - this
+    #   reduces the run time by ~75%.
     model <- df_temp %>% 
-      prophet(holidays = holiday_file) %>% 
+      prophet(holidays = holiday_file, uncertainty.samples = 0) %>% 
       suppressMessages()
     
     forecast <- predict(model, 
