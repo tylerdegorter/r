@@ -39,8 +39,10 @@ ProphetForecast <- function(df, num_periods, include_hist = FALSE) {
   
   ### Holidays
   # Creates the holiday dataset using "generated_holidays" data frame from the package. Since each holiday needs a lower and 
-  # upper range, we default to using -1 and 5 for now as it likely covers most holidays, although some may behave differently
-  # (ie. Christmas, Chinese New Year, Diwali). 
+  #   upper range, we default to using -1 and 5 for now as it likely covers most holidays, although some may behave differently
+  #   (ie. Christmas, Chinese New Year, Diwali). 
+  # TODO(Tyler): Consider changing it so that the pre & post days for each holiday are specific to that holiday instead of 
+  #   being used to cover a wide range.
   holiday_file <- generated_holidays %>%
     # change ds to date, and add window range (blunt now, can update to specific holidays)
     mutate(ds = as.Date(ds), 
@@ -82,7 +84,7 @@ ProphetForecast <- function(df, num_periods, include_hist = FALSE) {
     # get loop start time to determine length of this loop
     loop_start_time <- Sys.time()
     
-    # Create temp table
+    # Create temp table to subset from the main table from for the purpose of each row of the outer loop.
     df_temp <- df
     
     # Only return the values from the temp table that have to do with that set of unique values. Essentially, starting
@@ -99,7 +101,8 @@ ProphetForecast <- function(df, num_periods, include_hist = FALSE) {
     # Run the forecast. First build the model, passing in the subsetted temp file and holiday file, and then
     #   run the prediction, which uses the model and number of periods to forecast. Only return the date and
     #   predicted value "yhat". Set uncertainty.samples to 0 to avoid prophet sampling the distribution - this
-    #   reduces the run time by ~75%.
+    #   reduces the run time by ~75% and isn't necessary since we aren't returning any intervals, just point
+    #   estimates. 
     model <- df_temp %>% 
       prophet(holidays = holiday_file, uncertainty.samples = 0) %>% 
       suppressMessages()
@@ -108,7 +111,8 @@ ProphetForecast <- function(df, num_periods, include_hist = FALSE) {
                         make_future_dataframe(model, 
                                               periods = num_periods))[, c("ds", "yhat")]
     
-    # Plots components of the model (commenting out for now, consider putting back as a list element)
+    # Plots components of the model - commenting out for now, consider putting back as a list element. Given
+    #   we have multiple iterations of values we're forecasting, this may not be relevant now but keep it here
     # prophet_plots <- prophet_plot_components(model, forecast)
     
     # Append other columns to the data. After running the forecast, we only have a date and a number. Here
@@ -120,7 +124,7 @@ ProphetForecast <- function(df, num_periods, include_hist = FALSE) {
     names(forecast) <- names(df_temp)
     output_df <- rbind(output_df, forecast)
     
-    # get loop end time to determine length of this loop
+    # Get loop end time to determine length of this loop
     loop_end_time <- Sys.time()
     
     # So we know how long things take, print the loop we are on, as well as how many there are to go.
@@ -139,21 +143,21 @@ ProphetForecast <- function(df, num_periods, include_hist = FALSE) {
   
   # Rename the output data frame with the same column names as the input data frame
   names(output_df) <- names(df)
+  
   # Only keep the dates that start after the end of the input data.
-  #   TODO (Tyler): Consider also bringing in training data to have everything in one table.
   output_df_fcst_only <- output_df %>%
     filter(date > max(df$date))
   
-  # If we want to include history, append it to the data below. Otherwise only return output
+  # If we want to include history, append it to the data below. Otherwise only return forecast output
   if (include_hist == TRUE) {
     output_df %>%
-      filter(date > max(df$date)) %>%
-      rbind(df) %>%
-      mutate(flag = if_else(date > max(df$date), 'Forecast', 'History')) %>%
+      filter(date > max(df$date)) %>% # only keep forecasted values, removed modeled historicals
+      rbind(df) %>% # union the data
+      mutate(flag = if_else(date > max(df$date), 'Forecast', 'History')) %>% # add a flag for history & forecast
       return()
   } else {
     output_df %>%
-      filter(date > max(df$date)) %>%
+      filter(date > max(df$date)) %>% # just keep forecast
       return()
   }
   
