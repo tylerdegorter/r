@@ -22,7 +22,7 @@ suppressMessages(
 )
 
 # Create function
-ProphetForecast <- function(df, num_periods, include_hist) {
+ProphetForecast <- function(df, num_periods, include_hist = FALSE) {
   
   ### Checks to make sure the column names are correct.
   date_check = sum(names(df) %in% 'date')
