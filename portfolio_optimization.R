@@ -28,9 +28,9 @@ calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000){
   tickers <- sort(tickers_input)
   
   # create a matrix to hold calculated values
-  target_estimates <- matrix(data = 0, nrow = 4, ncol = length(tickers))
+  target_estimates <- matrix(data = 0, nrow = 5, ncol = length(tickers))
   colnames(target_estimates) <- tickers
-  rownames(target_estimates) <- c("current_price", "target_price", "expected_return", "stdev_return")
+  rownames(target_estimates) <- c("current_price", "target_price", "expected_return", "stdev_return", 'dividend')
   
   ######################## Get historical stock prices
   
@@ -104,11 +104,20 @@ calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000){
     
     target_price <- scraped_data[8,2]
     
+    dividend <- substr(scraped_data[6, 2], 1, gregexpr(" ", scraped_data[6, 2])[[1]][1] - 1) %>%
+      as.numeric()
+    
+    # dividend
+    target_estimates[5,i] <- ifelse(is.na(dividend), 0, dividend)
+    
+    # target price
     target_estimates[2,i] <- gsub(",","",target_price) %>% 
       as.numeric()
     
-    target_estimates[3,i] <- target_estimates[2,i] / target_estimates[1,i] - 1
+    # expected return
+    target_estimates[3,i] <- (target_estimates[2,i] + target_estimates[5,i]) / target_estimates[1,i] - 1
     
+    # standard deviation
     target_estimates[4,i] <- historical_stdev_returns %>%
       filter(ticker == tickers[i]) %>%
       pull(stdev_return)
@@ -176,4 +185,4 @@ calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000){
 }
 
 # Runs the function using Lockheed, Raytheon, and Northrup
-calculateOptimalPortfolio(c("ABNB", "LMT", "NKE"), 100000, rf_rate = 0.01)
+calculateOptimalPortfolio(c("ABNB", "LMT", "NKE"), 100000)
