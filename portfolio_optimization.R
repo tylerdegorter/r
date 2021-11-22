@@ -180,7 +180,7 @@ calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000){
     geom_line(data = tangency, aes(x = vol, y = ret, color = 'red', linemitre = 2))
   
   # compile optimal portfolio and chart into a list and export it
-  output <- list(optim_portfolio, final_ggplot_chart, target_estimates_df, VCV)
+  output <- list(optim_portfolio, target_estimates_df, VCV, final_ggplot_chart)
   return(output)
 }
 
