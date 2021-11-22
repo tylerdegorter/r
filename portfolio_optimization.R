@@ -9,14 +9,16 @@
 #'
 #' @param tickers_input: a vector of stock tickers to evaluate as a portfolio
 #' @param n_simul: number of simulations to run
+#' @param rf_rate: the risk-free rate to be used; assume 0. Plan is to make dynamic
 ##############################################################################################################################
 
 # Call packages
 suppressMessages(
   require(tidyverse),
   require(xml2),
-  library(quantmod),
-  library(lubridate)
+  require(quantmod),
+  require(lubridate),
+  require(htmltab)
 )
 
 calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000){
@@ -179,9 +181,9 @@ calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000){
     geom_line(data = tangency, aes(x = vol, y = ret, color = 'red', linemitre = 2))
   
   # compile optimal portfolio and chart into a list and export it
-  output <- list(optim_portfolio, final_ggplot_chart)
+  output <- list(optim_portfolio, final_ggplot_chart, target_estimates_df, VCV)
   return(output)
 }
 
-# Runs the function using Lockheed, Raytheon, and Northrup
-calculateOptimalPortfolio(c("ABNB", "LMT", "NKE"), 100000)
+# Runs the function using sample portfolio
+calculateOptimalPortfolio(c("PYPL", "WMT", "VZ", "LMT"), 200000)
