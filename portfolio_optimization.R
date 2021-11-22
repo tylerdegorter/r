@@ -81,7 +81,7 @@ calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000){
   # get standard deviation of returns
   historical_stdev_returns <- historical_returns %>%
     group_by(ticker) %>%
-    summarize(stdev_return = sd(return))
+    summarize(stdev_return = sd(return) * sqrt(12))
   
   # Calculate variance covariance matrix
   VCV <- historical_returns %>%
