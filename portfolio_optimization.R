@@ -20,7 +20,7 @@ suppressMessages(
   library(lubridate)
 )
 
-calculate_Optimal_Portfolio <- function(tickers_input, n_simul = 10000, rf_rate = 0){
+calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000, rf_rate = 0){
 
   ######################## Set up datasets to use later
   
@@ -166,5 +166,5 @@ calculate_Optimal_Portfolio <- function(tickers_input, n_simul = 10000, rf_rate 
   return(output)
 }
 
-
-calculate_Optimal_Portfolio(c("LMT", "RTX", "NOC"), 100000, rf_rate = 0.01)
+# Runs the function using Lockheed, Raytheon, and Northrup
+calculateOptimalPortfolio(c("LMT", "RTX", "NOC"), 100000, rf_rate = 0.01)
