@@ -126,7 +126,7 @@ calculate_Optimal_Portfolio <- function(tickers_input, n_simul = 10000, rf_rate 
   for (j in 1:n_simul){
     
     # randomly select weights and ensure they sum to 1
-    rand_weights <- rnorm(length(tickers), 1 / length(tickers), 0.5)
+    rand_weights <- rnorm(length(tickers), mean = 1 / length(tickers), sd = 1 / length(tickers) * 0.5)
     rand_weights <- rand_weights / sum(rand_weights)
     
     # calculate portfolio return and standard deviation
