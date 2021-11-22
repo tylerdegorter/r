@@ -13,13 +13,12 @@
 ##############################################################################################################################
 
 # Call packages
-suppressMessages(
-  require(tidyverse),
-  require(xml2),
-  require(quantmod),
-  require(lubridate),
-  require(htmltab)
-)
+
+require(tidyverse)
+require(xml2)
+require(quantmod)
+require(lubridate)
+require(htmltab)
 
 calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000){
   
@@ -176,8 +175,8 @@ calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000){
   final_ggplot_chart <- simul_df %>%
     ggplot(aes(x = vol, y = return)) +
     geom_point() +
-    xlim(optim_portfolio$vol / 2, optim_portfolio$vol * 2) +
-    ylim(optim_portfolio$return / 2, optim_portfolio$return * 1.5) +
+    xlim(0, optim_portfolio$vol * 2) +
+    ylim(rf_rate * 0.8, optim_portfolio$return * 1.5) +
     geom_line(data = tangency, aes(x = vol, y = ret, color = 'red', linemitre = 2))
   
   # compile optimal portfolio and chart into a list and export it
@@ -186,4 +185,4 @@ calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000){
 }
 
 # Runs the function using sample portfolio
-calculateOptimalPortfolio(c("PYPL", "WMT", "VZ", "LMT"), 200000)
+calculateOptimalPortfolio(c("PYPL", "WMT", "VZ", "LMT"), n_simul = 1000000)
