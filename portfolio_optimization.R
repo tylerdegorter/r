@@ -20,8 +20,8 @@ suppressMessages(
   library(lubridate)
 )
 
-calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000, rf_rate = 0){
-
+calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000){
+  
   ######################## Set up datasets to use later
   
   # get list of stock tickers to use later
@@ -31,7 +31,7 @@ calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000, rf_rate = 
   target_estimates <- matrix(data = 0, nrow = 4, ncol = length(tickers))
   colnames(target_estimates) <- tickers
   rownames(target_estimates) <- c("current_price", "target_price", "expected_return", "stdev_return")
-
+  
   ######################## Get historical stock prices
   
   # Query data from Google Finance
@@ -40,47 +40,56 @@ calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000, rf_rate = 
              to = Sys.Date(),
              warnings = FALSE,
              auto.assign = TRUE)
-
+  
+  # Grab the 1 month t bill rate from the treasury yield curve
+  rf_rate <- "https://www.treasury.gov/resource-center/data-chart-center/interest-rates/pages/textview.aspx?data=yield" %>%
+    htmltab(which = 2, header = 1) %>%
+    suppressWarnings() %>%
+    select(`1 mo`) %>%
+    tail(1) %>%
+    mutate(rate = as.numeric(`1 mo`) / 100) %>%
+    pull(rate)
+  
   # get historical time series and compile
   historical_prices <- map(tickers, function(x) Ad(get(x)))
   historical_prices <- reduce(historical_prices, merge)
   colnames(historical_prices) <- tickers
   current_prices <- tail(historical_prices, 1)
-
+  
   # add in month, year to the time series
   historical_prices_df <- as.data.frame(historical_prices)
   historical_prices_df$date <- rownames(historical_prices_df)
   historical_prices_df$month <- month(historical_prices)
   historical_prices_df$year <- year(historical_prices)
-
+  
   # calculate the first trading day of each month
   join_dates <- historical_prices_df %>%
     group_by(year, month) %>%
     summarize(date = min(date))
-
+  
   # get another data frame of monthly prices only
   historical_prices_df_monthly <- historical_prices_df %>%
     inner_join(join_dates, by = c("year", "month", "date"))
-
+  
   # get data frame of monthly returns
   historical_returns <- historical_prices_df_monthly %>%
     gather(key = 'ticker', value = 'price', -month, -year, -date) %>%
     mutate(price_last_month = lag(price, 1)) %>%
     filter(is.na(price_last_month) == 0) %>%
     mutate(return = price / price_last_month - 1)
-
+  
   # get standard deviation of returns
   historical_stdev_returns <- historical_returns %>%
     group_by(ticker) %>%
     summarize(stdev_return = sd(return))
-
+  
   # Calculate variance covariance matrix
   VCV <- historical_returns %>%
     select(date, ticker, return) %>%
     spread(key = 'ticker', value = 'return', fill = 0) %>%
     select(-date) %>%
     cov()
-
+  
   ######################## Build matrix of returns, stdev, and returns by stock
   
   for (i in 1:length(tickers)){
@@ -92,7 +101,7 @@ calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000, rf_rate = 
     scraped_data <- paste0("https://finance.yahoo.com/quote/",tickers[i],"?p=",tickers[i]) %>%
       htmltab(which = 2, header = 0) %>%
       suppressWarnings()
-  
+    
     target_price <- scraped_data[8,2]
     
     target_estimates[2,i] <- gsub(",","",target_price) %>% 
@@ -106,22 +115,22 @@ calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000, rf_rate = 
     
     paste0("Done with stock ", i, " of ", length(tickers)) %>%
       print()
-     
+    
   }
-
+  
   # convert to a data frame
   target_estimates_df <- t(target_estimates) %>% 
     as.data.frame()
   target_estimates_df$ticker <- rownames(target_estimates_df)
   rownames(target_estimates_df) <- NULL
-
-
+  
+  
   ######################## Incorporate weights for each stock through simulation
   
   # Create simulation matrix to be used later
   simul_matrix <- matrix(data = 0, nrow = n_simul, ncol = length(tickers) + 2)
   colnames(simul_matrix) <- c("return", "vol", paste0(tickers, "_wt"))
-
+  
   # Run simulation 
   for (j in 1:n_simul){
     
@@ -143,9 +152,9 @@ calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000, rf_rate = 
   
   # Return the optimal portfolio based on simulations
   optim_portfolio <- simul_df %>% arrange(desc(sharpe)) %>% head(1)
-
+  
   ######################## Charting
-
+  
   # Calculate the tangency portfolio based on inputs used above
   tangency <- data.frame(seq(0, optim_portfolio$return * 2, 0.001))
   colnames(tangency) <- c("vol")
@@ -167,4 +176,4 @@ calculateOptimalPortfolio <- function(tickers_input, n_simul = 10000, rf_rate = 
 }
 
 # Runs the function using Lockheed, Raytheon, and Northrup
-calculateOptimalPortfolio(c("LMT", "RTX", "NOC"), 100000, rf_rate = 0.01)
+calculateOptimalPortfolio(c("ABNB", "LMT", "NKE"), 100000, rf_rate = 0.01)
