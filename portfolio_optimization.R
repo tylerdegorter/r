@@ -9,7 +9,6 @@
 #'
 #' @param tickers_input: a vector of stock tickers to evaluate as a portfolio
 #' @param n_simul: number of simulations to run
-#' @param rf_rate: the risk-free rate to be used; assume 0. Plan is to make dynamic
 ##############################################################################################################################
 
 # Call packages
