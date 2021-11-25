@@ -92,7 +92,7 @@ ProphetForecast <- function(df, num_periods, include_hist = FALSE) {
     #   unique dims table. Continue with the next column and so on until we've fully subsetted down the data table.
     # TODO (Tyler): consider changing to an inner join to increase processing speed. 
     for (j in 3:num_columns) {
-      df_temp <- df_temp[df_temp[, j] == unique_dims[i, j - 2], ]
+      df_temp <- df_temp[df_temp[, j] == pull(unique_dims[i, j - 2]), ]
     }
     
     # Change column names so it works with prophet, since prophet needs "ds" not "date", and "y" not "metric"
