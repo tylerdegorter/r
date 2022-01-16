@@ -1,22 +1,3 @@
-##############################################################################################################################
-#' This file provides a process to calculate optimal Daily Fantasy lineups for Basketball. It takes data from DraftKings for
-#'   salaries and sportsline.com for NBA stat projections for the current day. It then projects the number of points per player
-#'   based on DraftKings scoring, combines it with the salary data, and runs a linear optimization model to pick a team that
-#'   maximizes points based on constraints, which are listed below:
-#'
-#' Constraints:
-#'   Salary: salary must be under 50000
-#'   Positions: the number of PG, SG, SF, PF, and C must adhere to DraftKings. In addition, general G, F, and UTIL are accouned for
-#' 
-#' TODO(tyler): Consider adding historical gamelogs to identify variance of player stats. This allows for Monte Carlo simulation
-#'   with the intent of analyzing distribution of potential scores for optimal outcomes as well as which players show up the most
-#'   often in the optimal team.
-#'
-#' @param max_salary: the maximum salary that can be spent. Defaults to 50,000 as that is the DraftKings figure
-#' @param draftkings_url: the url of the salary data from DraftKings. Go into a lobby and right click "export" and copy the link
-#'   to paste here
-##############################################################################################################################
-
 # Call libraries
 library(tidyverse)
 library(rvest)
@@ -26,7 +7,7 @@ library(lpSolve)
 library(lpSolveAPI)
 
 # Build the function
-calculateOptimalBasketball <- function(max_salary = 50000, draftkings_url){
+calculateOptimalBasketball <- function(max_salary = 50000, draftkings_url, point_type = "projected"){
 
   # Load Data ####################################################################
   #
@@ -34,8 +15,8 @@ calculateOptimalBasketball <- function(max_salary = 50000, draftkings_url){
   
   ##### Read in DraftKings data
   draftkings_data <- read_csv(draftkings_url) %>%
-    rename(position = Position, name = Name, salary = Salary, roster_position = `Roster Position`) %>%
-    select(position, name, salary, roster_position) %>%
+    rename(position = Position, name = Name, salary = Salary, roster_position = `Roster Position`, avg_pts = AvgPointsPerGame) %>%
+    select(position, name, salary, roster_position, avg_pts) %>%
     mutate(name = gsub("`", "", name),
            name = gsub("'", "", name))
   
@@ -157,8 +138,18 @@ calculateOptimalBasketball <- function(max_salary = 50000, draftkings_url){
   
   ### Define objective function and constraints
   
-  # for the model above, bring it in with the values to maximize
-  set.objfn(lprec, combined_metrics_elig$fantasy_pts) 
+  # For the model above, bring it in with the values to maximize. We pick the
+  # type of point metric (forecast or historical) here
+  if (point_type == 'projected') {
+    set.objfn(lprec, combined_metrics_elig$fantasy_pts)
+  } else if (point_type == 'historical') {
+    set.objfn(lprec, combined_metrics_elig$avg_pts)
+  } else {
+    print("Error: 'point_type' needs to be 'projected' or 'historical")
+    break
+  }
+  
+   
   
   ### Set constraints
   
@@ -224,7 +215,8 @@ calculateOptimalBasketball <- function(max_salary = 50000, draftkings_url){
 
 # run the model
 output <- calculateOptimalBasketball(max_salary = 50000,
-                                     draftkings_url = "https://www.draftkings.com/lineup/getavailableplayerscsv?contestTypeId=70&draftGroupId=62363")
+                                     draftkings_url = "https://www.draftkings.com/lineup/getavailableplayerscsv?contestTypeId=70&draftGroupId=62363",
+                                     point_type = "bleh")
 
-
+# Return roster
 output$roster
