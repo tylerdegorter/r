@@ -1,3 +1,22 @@
+##############################################################################################################################
+#' This file provides a process to calculate optimal Daily Fantasy lineups for Basketball. It takes data from DraftKings for
+#'   salaries and sportsline.com for NBA stat projections for the current day. It then projects the number of points per player
+#'   based on DraftKings scoring, combines it with the salary data, and runs a linear optimization model to pick a team that
+#'   maximizes points based on constraints, which are listed below:
+#'
+#' Constraints:
+#'   Salary: salary must be under 50000
+#'   Positions: the number of PG, SG, SF, PF, and C must adhere to DraftKings. In addition, general G, F, and UTIL are accouned for
+#' 
+#' TODO(tyler): Consider adding historical gamelogs to identify variance of player stats. This allows for Monte Carlo simulation
+#'   with the intent of analyzing distribution of potential scores for optimal outcomes as well as which players show up the most
+#'   often in the optimal team.
+#'
+#' @param max_salary: the maximum salary that can be spent. Defaults to 50,000 as that is the DraftKings figure
+#' @param draftkings_url: the url of the salary data from DraftKings. Go into a lobby and right click "export" and copy the link
+#'   to paste here
+##############################################################################################################################
+
 # Call libraries
 library(tidyverse)
 library(rvest)
@@ -216,7 +235,7 @@ calculateOptimalBasketball <- function(max_salary = 50000, draftkings_url, point
 # run the model
 output <- calculateOptimalBasketball(max_salary = 50000,
                                      draftkings_url = "https://www.draftkings.com/lineup/getavailableplayerscsv?contestTypeId=70&draftGroupId=62363",
-                                     point_type = "bleh")
+                                     point_type = "projected")
 
-# Return roster
+# Evaluate roster
 output$roster
