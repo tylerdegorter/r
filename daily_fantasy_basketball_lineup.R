@@ -24,10 +24,11 @@ library(fuzzyjoin)
 library(reclin)
 library(lpSolve)
 library(lpSolveAPI)
+library(gridExtra)
 
 # Control Panel ################################################################
 max_salary = 50000
-draftkings_url = "https://www.draftkings.com/lineup/getavailableplayerscsv?contestTypeId=70&draftGroupId=62372"
+draftkings_url = "https://www.draftkings.com/lineup/getavailableplayerscsv?contestTypeId=70&draftGroupId=62378"
 
 # Load Data ####################################################################
 #
@@ -35,8 +36,8 @@ draftkings_url = "https://www.draftkings.com/lineup/getavailableplayerscsv?conte
 
 ##### Read in DraftKings data
 draftkings_data <- read_csv(draftkings_url) %>%
-  rename(position = Position, name = Name, salary = Salary, roster_position = `Roster Position`) %>%
-  select(position, name, salary, roster_position) %>%
+  rename(position = Position, name = Name, salary = Salary, roster_position = `Roster Position`, avg_pts_per_game = AvgPointsPerGame) %>%
+  select(position, name, salary, roster_position, avg_pts_per_game) %>%
   mutate(name = gsub("`", "", name),
          name = gsub("'", "", name))
 
@@ -173,7 +174,7 @@ num_decision_variables <- nrow(combined_metrics_elig)
 lprec <- make.lp(nrow = 0, ncol = num_decision_variables)
 
 ### Set function to maximize
-lp.control(lprec, sense="max")
+lp.control(lprec, sense = "max")
 
 ### Define objective function and constraints
 
@@ -241,14 +242,37 @@ select_team <- list(
       constrained_value = get.constr.value(lprec)
     ),
   
-  # Visualization
-  combined_metrics_elig_w_select %>%
+  # Predicted vs Salary
+  all_players_chart = combined_metrics_elig_w_select %>%
     ggplot(aes(x = salary, y = dk, color = as.factor(select))) +
     geom_point() +
     geom_smooth(method='lm', formula= y~x) +
+    theme_minimal() +
     theme(legend.position = "none") +
-    labs(y = 'Fantasy Points', x = 'Salary') +
-    geom_text(data = filter(combined_metrics_elig_w_select, select == 1), aes(label = name), vjust = -2, check_overlap = TRUE)
-)
+    labs(y = 'Predicted Fantasy Points', x = 'Salary', title = "Projected Points vs Salary") +
+    scale_color_manual(values=c("#c74444", "#0d903e")) +
+    geom_text(data = filter(combined_metrics_elig_w_select, select == 1), 
+              aes(label = name), vjust = -2, check_overlap = TRUE, size = 3) +
+    ylim(0, max(combined_metrics_elig_w_select$dk) * 1.2),
+    
+  # Predicted v Historical Actuals
+    predicted_v_actual_chart = combined_metrics_elig_w_select %>%
+      ggplot(aes(x = avg_pts_per_game, y = dk, color = as.factor(select))) +
+      geom_point() +
+      geom_abline(intercept = 0, slope = 1, size = 0.5) +
+      theme_minimal() +
+      theme(legend.position = "none", axis.title.y = element_blank()) +
+      labs(x = 'Predicted  Fantasy Points', x = 'Historical Averague', title = "Projected Points vs Historical Avg") +
+      scale_color_manual(values=c("#c74444", "#0d903e")) +
+      geom_text(data = filter(combined_metrics_elig_w_select, select == 1), 
+                aes(label = name), vjust = -2, check_overlap = TRUE, size = 3) +
+      ylim(0, max(combined_metrics_elig_w_select$dk) * 1.2)
+  )
 
-select_team
+# Return output
+select_team$roster
+paste0("Predicted point total is ", select_team$predicted_points, " and salary is ", select_team$salary)
+select_team$constraints
+
+# charts
+grid.arrange(select_team$all_players_chart, select_team$predicted_v_actual_chart, ncol = 2)
