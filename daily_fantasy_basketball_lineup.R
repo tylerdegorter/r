@@ -156,6 +156,7 @@ combined_metrics <- draftkings_data %>%
     is_C = ifelse(grepl("C", roster_position) == TRUE, 1, 0),
     is_G = ifelse(grepl("G", roster_position) == TRUE, 1, 0),
     is_F = ifelse(grepl("F", roster_position) == TRUE, 1, 0),
+    is_G_F = ifelse(grepl("F", roster_position) == TRUE | grepl("G", roster_position) == TRUE, 1, 0),
     is_UTIL = ifelse(grepl("UTIL", roster_position) == TRUE, 1, 0)
   )
 
@@ -184,14 +185,15 @@ set.objfn(lprec, combined_metrics_elig$dk)
 # Set salary constraint
 add.constraint(lprec, combined_metrics_elig$salary, "<=", max_salary)
 # Position constraint
-add.constraint(lprec, combined_metrics_elig$is_PG, ">=", 1)
-add.constraint(lprec, combined_metrics_elig$is_SG, ">=", 1)
-add.constraint(lprec, combined_metrics_elig$is_SF, ">=", 1)
-add.constraint(lprec, combined_metrics_elig$is_PF, ">=", 1)
-add.constraint(lprec, combined_metrics_elig$is_C, ">=", 1)
-add.constraint(lprec, combined_metrics_elig$is_G, ">=", 3)
-add.constraint(lprec, combined_metrics_elig$is_F, ">=", 3)
-add.constraint(lprec, combined_metrics_elig$is_UTIL, "=", 8)
+add.constraint(lprec, combined_metrics_elig$is_PG, ">=", 1) # need 1+ PG
+add.constraint(lprec, combined_metrics_elig$is_SG, ">=", 1) # need 1+ SG
+add.constraint(lprec, combined_metrics_elig$is_SF, ">=", 1) # need 1+ SF
+add.constraint(lprec, combined_metrics_elig$is_PF, ">=", 1) # need 1+ PF
+add.constraint(lprec, combined_metrics_elig$is_C, ">=", 1) # need 1+ C
+add.constraint(lprec, combined_metrics_elig$is_G, ">=", 3) # need 3+ Guards (PG, SG, G)
+add.constraint(lprec, combined_metrics_elig$is_F, ">=", 3) # need 3+ Forwards (SF, PF, F)
+add.constraint(lprec, combined_metrics_elig$is_G_F, ">=", 6) # need 6+ Guards / Fwds (PG, SG, SF, PF, G, F)
+add.constraint(lprec, combined_metrics_elig$is_UTIL, "=", 8) # need 8 players overall
 
 # Set to binary variables
 set.type(lprec, columns = c(1:num_decision_variables), type = 'binary')
@@ -232,7 +234,7 @@ select_team <- list(
   # The constraints 
   constraints = 
     data.frame(
-      constraint = c("salary", "Num PG", "Num SG", "Num SF", "Num PF", "Num C", "Num G", "Num F", "Num Util"),
+      constraint = c("salary", "Num PG", "Num SG", "Num SF", "Num PF", "Num C", "Num G", "Num F", "Num G or F", "Num Util"),
       final_value = get.constraints(lprec),
       constr_type = get.constr.type(lprec),
       #rhs = get.rhs(lprec),
