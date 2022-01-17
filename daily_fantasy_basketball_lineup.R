@@ -27,7 +27,7 @@ library(lpSolveAPI)
 
 # Control Panel ################################################################
 max_salary = 50000
-draftkings_url = "https://www.draftkings.com/lineup/getavailableplayerscsv?contestTypeId=70&draftGroupId=62384"
+draftkings_url = "https://www.draftkings.com/lineup/getavailableplayerscsv?contestTypeId=70&draftGroupId=62372"
 
 # Load Data ####################################################################
 #
@@ -246,7 +246,7 @@ select_team <- list(
     geom_smooth(method='lm', formula= y~x) +
     theme(legend.position = "none") +
     labs(y = 'Fantasy Points', x = 'Salary') +
-    geom_text(data = filter(combined_metrics_elig_w_select, select == 1), aes(label = name), vjust = -2)
+    geom_text(data = filter(combined_metrics_elig_w_select, select == 1), aes(label = name), vjust = -2, check_overlap = TRUE)
 )
 
 select_team
