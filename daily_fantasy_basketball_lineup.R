@@ -28,251 +28,293 @@ library(gridExtra)
 
 # Control Panel ################################################################
 max_salary = 50000
-draftkings_url = "https://www.draftkings.com/lineup/getavailableplayerscsv?contestTypeId=70&draftGroupId=62378"
+draftkings_url = "https://www.draftkings.com/lineup/getavailableplayerscsv?contestTypeId=70&draftGroupId=62478"
+dff_link <- "C:\\Users\\tyler\\Downloads\\DFF_NBA_cheatsheet_2022-01-18.csv"
 
-# Load Data ####################################################################
-#
-#
-
-##### Read in DraftKings data
-draftkings_data <- read_csv(draftkings_url) %>%
-  rename(position = Position, name = Name, salary = Salary, roster_position = `Roster Position`, avg_pts_per_game = AvgPointsPerGame) %>%
-  select(position, name, salary, roster_position, avg_pts_per_game) %>%
-  mutate(name = gsub("`", "", name),
-         name = gsub("'", "", name))
-
-##### Read in Projections
-### Read in Spotsline Projections
-html_document_sportsline <- read_html("https://www.sportsline.com/nba/expert-projections/simulation/")
-
-projections_all_sportsline <- html_table(html_document_sportsline, fill = TRUE)[[1]]
-
-projections_sportsline <- projections_all_sportsline %>%
-  # only keep columns we want 
-  select(PLAYER, TEAM, DK, PTS, AST, TRB, BK, ST, TO, FGA) %>%
-  # change block from char to num
-  mutate(PTS = ifelse(PTS == '-', 0, PTS),
-         AST = ifelse(AST == '-', 0, AST),
-         TRB = ifelse(TRB == '-', 0, TRB),
-         BK = ifelse(BK == '-', 0, BK),
-         ST = ifelse(ST == '-', 0, ST),
-         TO = ifelse(TO == '-', 0, TO),
-         FGA = ifelse(FGA == '-', 0, FGA),
-         PTS = as.numeric(PTS),
-         AST = as.numeric(AST),
-         TRB = as.numeric(TRB),
-         BK = as.numeric(BK),
-         ST = as.numeric(ST),
-         TO = as.numeric(TO),
-         FGA = as.numeric(FGA),
-         # Remove ' and ` from player names
-         PLAYER = gsub("`", "", PLAYER),
-         PLAYER = gsub("'", "", PLAYER)) %>%
-  # rename for consistency
-  rename(reb = TRB, blk = BK, stl = ST, Tm = TEAM)
-
-
-
-names(projections_sportsline) <- tolower(names(projections_sportsline))
-
-# Read in Basketball Reference data for 3pt pct
-html_document_br <- read_html("https://www.basketball-reference.com/leagues/NBA_2022_totals.html#totals_stats::fg3_pct")
-
-three_pt_pct <- html_table(html_document_br, fill = TRUE)[[1]] %>%
-  filter(Player != 'Player') %>%
-  mutate(three_pt_percent = ifelse(`3P%` == '', 0, `3P%`)) %>%
-  mutate(three_pt_percent = as.numeric(three_pt_percent),
-         three_pt_att = as.numeric(`3PA`),
-         FGA = as.numeric(FGA)) %>%
-  mutate(three_pt_apt_pct = three_pt_att / FGA) %>%
-  select(Player, Tm, three_pt_percent, three_pt_apt_pct) %>%
-  rename(player = Player, tm = Tm) %>%
-  mutate(player = iconv(player, from="UTF-8", to="ASCII//TRANSLIT")) %>%
-  mutate(player = gsub("`", "", player),
-         player = gsub("'", "", player))
-
-##### Create tables for scoring and positions
-scoring <- data.frame(
-  pts = 1,
-  three_pts = 0.5,
-  reb = 1.25,
-  ast = 1.5,
-  stl = 2,
-  blk = 2,
-  to = -0.5,
-  dbl_dbl = 1.5,
-  trpl_trpl = 3
-)
-
-positions <- data.frame(
-  PG = 1,
-  SG = 1,
-  SF = 1,
-  PF = 1,
-  C = 1,
-  G = 1,
-  F = 1,
-  UTIL = 1
-)
-
-
-##### Remove excess data frames
-rm(html_document_sportsline, projections_all_sportsline, html_document_br)
-
-# Data Transformation #########################################################
-#
-#
-
-# Bring in projected three points based on historical 3p % and projected attempted field goals
-projections_sportsline_b <- projections_sportsline %>%
-  left_join(select(three_pt_pct, -tm), by = c("player")) %>%
-  mutate(three_pt_made = fga * three_pt_percent * three_pt_apt_pct) %>%
-  select(-fga, -three_pt_percent, -tm)
-
-# Build out the points projections by players
-projections_sportsline_complete <- projections_sportsline_b %>%
-  mutate(dbl_digit_stats = ifelse(pts > 10, 1, 0) + 
-           ifelse(ast > 10, 1, 0) + 
-           ifelse(reb > 10, 1, 0) + 
-           ifelse(blk > 10, 1, 0)) %>%
-  mutate(fantasy_pts = pts * scoring$pts + 
-           ast * scoring$ast + 
-           reb * scoring$reb + 
-           blk * scoring$blk + 
-           stl * scoring$stl + 
-           to * scoring$to + 
-           three_pt_made * scoring$three_pts +
-           ifelse(dbl_digit_stats == 2, scoring$dbl_dbl, 0) +
-           ifelse(dbl_digit_stats >= 3, scoring$trpl_trpl, 0)) %>%
-  select(player, dk, fantasy_pts)
-
-# Combine with salary information
-combined_metrics <- draftkings_data %>%
-  left_join(projections_sportsline_complete, by = c("name" = "player")) %>%
-  mutate(
-    is_PG = ifelse(grepl("PG", roster_position) == TRUE, 1, 0),
-    is_SG = ifelse(grepl("SG", roster_position) == TRUE, 1, 0),
-    is_SF = ifelse(grepl("SF", roster_position) == TRUE, 1, 0),
-    is_PF = ifelse(grepl("PF", roster_position) == TRUE, 1, 0),
-    is_C = ifelse(grepl("C", roster_position) == TRUE, 1, 0),
-    is_G = ifelse(grepl("G", roster_position) == TRUE, 1, 0),
-    is_F = ifelse(grepl("F", roster_position) == TRUE, 1, 0),
-    is_G_F = ifelse(grepl("F", roster_position) == TRUE | grepl("G", roster_position) == TRUE, 1, 0),
-    is_UTIL = ifelse(grepl("UTIL", roster_position) == TRUE, 1, 0)
+# Build initial function
+optimize_daily_fantasy_basketball <- function(max_salary, draftkings_url, dff_link){
+  
+  ################################################################################
+  # Load Data ####################################################################
+  ################################################################################
+  
+  ##### Read in DraftKings data
+  draftkings_data <- read_csv(draftkings_url) %>%
+    rename(position = Position, name = Name, salary = Salary, roster_position = `Roster Position`, avg_pts_per_game = AvgPointsPerGame) %>%
+    select(position, name, salary, roster_position, avg_pts_per_game) %>%
+    mutate(name = gsub("`", "", name),
+           name = gsub("'", "", name))
+  
+  ##### Read in Spotsline Projections
+  html_document_sportsline <- read_html("https://www.sportsline.com/nba/expert-projections/simulation/")
+  projections_all_sportsline <- html_table(html_document_sportsline, fill = TRUE)[[1]]
+  projections_sportsline <- projections_all_sportsline %>%
+    # only keep columns we want 
+    select(PLAYER, TEAM, DK, PTS, AST, TRB, BK, ST, TO, FGA) %>%
+    # change block from char to num
+    mutate(PTS = ifelse(PTS == '-', 0, PTS),
+           AST = ifelse(AST == '-', 0, AST),
+           TRB = ifelse(TRB == '-', 0, TRB),
+           BK = ifelse(BK == '-', 0, BK),
+           ST = ifelse(ST == '-', 0, ST),
+           TO = ifelse(TO == '-', 0, TO),
+           FGA = ifelse(FGA == '-', 0, FGA),
+           PTS = as.numeric(PTS),
+           AST = as.numeric(AST),
+           TRB = as.numeric(TRB),
+           BK = as.numeric(BK),
+           ST = as.numeric(ST),
+           TO = as.numeric(TO),
+           FGA = as.numeric(FGA),
+           # Remove ' and ` from player names
+           PLAYER = gsub("`", "", PLAYER),
+           PLAYER = gsub("'", "", PLAYER)) %>%
+    # rename for consistency
+    rename(reb = TRB, blk = BK, stl = ST, Tm = TEAM, sl_ppg_projection = DK)
+  names(projections_sportsline) <- tolower(names(projections_sportsline))
+  
+  ##### Read in Daily Fantasy Fuel Projections
+  dff_data <- read_csv(dff_link) %>%
+    mutate(position = ifelse(!is.na(position_alt), paste0(position,"/",position_alt), position),
+           name = paste0(first_name, " ", last_name)) %>%
+    select(name, position, salary, L5_ppg_floor, L5_ppg_avg, L5_ppg_max, ppg_projection) %>%
+    mutate(name = gsub("`", "", name),
+           name = gsub("'", "", name)) %>%
+    rename(dff_ppg_projection = ppg_projection)
+  
+  #####  Read in Basketball Reference data for 3pt pct
+  html_document_br <- read_html("https://www.basketball-reference.com/leagues/NBA_2022_totals.html#totals_stats::fg3_pct")
+  three_pt_pct <- html_table(html_document_br, fill = TRUE)[[1]] %>%
+    filter(Player != 'Player') %>%
+    mutate(three_pt_percent = ifelse(`3P%` == '', 0, `3P%`)) %>%
+    mutate(three_pt_percent = as.numeric(three_pt_percent),
+           three_pt_att = as.numeric(`3PA`),
+           FGA = as.numeric(FGA)) %>%
+    mutate(three_pt_apt_pct = three_pt_att / FGA) %>%
+    select(Player, Tm, three_pt_percent, three_pt_apt_pct) %>%
+    rename(player = Player, tm = Tm) %>%
+    mutate(player = iconv(player, from="UTF-8", to="ASCII//TRANSLIT")) %>%
+    mutate(player = gsub("`", "", player),
+           player = gsub("'", "", player))
+  
+  ##### Create tables for scoring and positions
+  scoring <- data.frame(
+    pts = 1,
+    three_pts = 0.5,
+    reb = 1.25,
+    ast = 1.5,
+    stl = 2,
+    blk = 2,
+    to = -0.5,
+    dbl_dbl = 1.5,
+    trpl_trpl = 3
   )
-
-
-# Optimization ################################################################
-#
-#
-
-### Filter out those without a projected score (likely injured / not playing)
-combined_metrics_elig <- filter(combined_metrics, !is.na(dk))
-
-### Build initial base model based on # of variables
-num_decision_variables <- nrow(combined_metrics_elig)
-lprec <- make.lp(nrow = 0, ncol = num_decision_variables)
-
-### Set function to maximize
-lp.control(lprec, sense = "max")
-
-### Define objective function and constraints
-
-# for the model above, bring it in with the values to maximize
-set.objfn(lprec, combined_metrics_elig$dk) 
-
-### Set constraints
-
-# Set salary constraint
-add.constraint(lprec, combined_metrics_elig$salary, "<=", max_salary)
-# Position constraint
-add.constraint(lprec, combined_metrics_elig$is_PG, ">=", 1) # need 1+ PG
-add.constraint(lprec, combined_metrics_elig$is_SG, ">=", 1) # need 1+ SG
-add.constraint(lprec, combined_metrics_elig$is_SF, ">=", 1) # need 1+ SF
-add.constraint(lprec, combined_metrics_elig$is_PF, ">=", 1) # need 1+ PF
-add.constraint(lprec, combined_metrics_elig$is_C, ">=", 1) # need 1+ C
-add.constraint(lprec, combined_metrics_elig$is_G, ">=", 3) # need 3+ Guards (PG, SG, G)
-add.constraint(lprec, combined_metrics_elig$is_F, ">=", 3) # need 3+ Forwards (SF, PF, F)
-add.constraint(lprec, combined_metrics_elig$is_G_F, ">=", 6) # need 6+ Guards / Fwds (PG, SG, SF, PF, G, F)
-add.constraint(lprec, combined_metrics_elig$is_UTIL, "=", 8) # need 8 players overall
-
-# Set to binary variables
-set.type(lprec, columns = c(1:num_decision_variables), type = 'binary')
-
-### Solve the model
-solve(lprec)
-
-### Get output
-
-# Optimized points
-get.objective(lprec)
-
-# Players to pick
-get.variables(lprec)
-
-# add in selection column to dataset
-combined_metrics_elig_w_select = combined_metrics_elig %>%
-  mutate(select = get.variables(lprec)) 
-
-# Return players to pick
-select_team <- list(
   
-  # The roster and stats of the optimized team
-  roster = combined_metrics_elig_w_select %>%
-    filter(select == 1) %>%
-    select(name, dk, position, roster_position, salary),
+  positions <- data.frame(
+    PG = 1,
+    SG = 1,
+    SF = 1,
+    PF = 1,
+    C = 1,
+    G = 1,
+    F = 1,
+    UTIL = 1
+  )
   
-  # THe predicted points of the optimal team
-  predicted_points = get.objective(lprec),
+  ##### Remove excess data frames
+  rm(html_document_sportsline, projections_all_sportsline, html_document_br)
   
-  # The salary of the optimal team
-  salary = combined_metrics_elig %>%
-    mutate(select = get.variables(lprec)) %>%
-    filter(select == 1) %>%
-    pull(salary) %>% 
-    sum(),
+  ################################################################################
+  # Data Transformation #########################################################
+  ################################################################################
   
-  # The constraints 
-  constraints = 
-    data.frame(
-      constraint = c("salary", "Num PG", "Num SG", "Num SF", "Num PF", "Num C", "Num G", "Num F", "Num G or F", "Num Util"),
-      final_value = get.constraints(lprec),
-      constr_type = get.constr.type(lprec),
-      #rhs = get.rhs(lprec),
-      constrained_value = get.constr.value(lprec)
-    ),
+  #####  Bring in projected three points based on historical 3p % and projected attempted field goals
+  projections_sportsline_b <- projections_sportsline %>%
+    left_join(select(three_pt_pct, -tm), by = c("player")) %>%
+    mutate(three_pt_made = fga * three_pt_percent * three_pt_apt_pct) %>%
+    select(-fga, -three_pt_percent, -tm)
   
-  # Predicted vs Salary
-  all_players_chart = combined_metrics_elig_w_select %>%
-    ggplot(aes(x = salary, y = dk, color = as.factor(select))) +
-    geom_point() +
-    geom_smooth(method='lm', formula= y~x) +
-    theme_minimal() +
-    theme(legend.position = "none") +
-    labs(y = 'Predicted Fantasy Points', x = 'Salary', title = "Projected Points vs Salary") +
-    scale_color_manual(values=c("#c74444", "#0d903e")) +
-    geom_text(data = filter(combined_metrics_elig_w_select, select == 1), 
-              aes(label = name), vjust = -2, check_overlap = TRUE, size = 3) +
-    ylim(0, max(combined_metrics_elig_w_select$dk) * 1.2),
+  #####  Build out the points projections by players
+  projections_sportsline_complete <- projections_sportsline_b %>%
+    mutate(dbl_digit_stats = ifelse(pts > 10, 1, 0) + 
+             ifelse(ast > 10, 1, 0) + 
+             ifelse(reb > 10, 1, 0) + 
+             ifelse(blk > 10, 1, 0)) %>%
+    mutate(fantasy_pts = pts * scoring$pts + 
+             ast * scoring$ast + 
+             reb * scoring$reb + 
+             blk * scoring$blk + 
+             stl * scoring$stl + 
+             to * scoring$to + 
+             three_pt_made * scoring$three_pts +
+             ifelse(dbl_digit_stats == 2, scoring$dbl_dbl, 0) +
+             ifelse(dbl_digit_stats >= 3, scoring$trpl_trpl, 0)) %>%
+    select(player, sl_ppg_projection, fantasy_pts)
+  
+  #####  Combine with salary information
+  combined_metrics <- draftkings_data %>%
+    left_join(projections_sportsline_complete, by = c("name" = "player")) %>%
+    left_join(select(dff_data, name, dff_ppg_projection), by = c("name")) %>%
+    mutate(
+      is_PG = ifelse(grepl("PG", roster_position) == TRUE, 1, 0),
+      is_SG = ifelse(grepl("SG", roster_position) == TRUE, 1, 0),
+      is_SF = ifelse(grepl("SF", roster_position) == TRUE, 1, 0),
+      is_PF = ifelse(grepl("PF", roster_position) == TRUE, 1, 0),
+      is_C = ifelse(grepl("C", roster_position) == TRUE, 1, 0),
+      is_G = ifelse(grepl("G", roster_position) == TRUE, 1, 0),
+      is_F = ifelse(grepl("F", roster_position) == TRUE, 1, 0),
+      is_G_F = ifelse(grepl("F", roster_position) == TRUE | grepl("G", roster_position) == TRUE, 1, 0),
+      is_UTIL = ifelse(grepl("UTIL", roster_position) == TRUE, 1, 0)
+    )
+  
+  ################################################################################
+  # Optimization ################################################################
+  ################################################################################
+  
+  ##### Build optimization function
+  optimize_model <- function(fcst_source){
     
-  # Predicted v Historical Actuals
-    predicted_v_actual_chart = combined_metrics_elig_w_select %>%
-      ggplot(aes(x = avg_pts_per_game, y = dk, color = as.factor(select))) +
-      geom_point() +
-      geom_abline(intercept = 0, slope = 1, size = 0.5) +
-      theme_minimal() +
-      theme(legend.position = "none", axis.title.y = element_blank()) +
-      labs(x = 'Predicted  Fantasy Points', x = 'Historical Averague', title = "Projected Points vs Historical Avg") +
-      scale_color_manual(values=c("#c74444", "#0d903e")) +
-      geom_text(data = filter(combined_metrics_elig_w_select, select == 1), 
-                aes(label = name), vjust = -2, check_overlap = TRUE, size = 3) +
-      ylim(0, max(combined_metrics_elig_w_select$dk) * 1.2)
+    #####  Filter out those without a projected score (likely injured / not playing)
+    if (fcst_source == 'sl'){
+      combined_metrics_elig <- filter(combined_metrics, !is.na(sl_ppg_projection))
+      combined_metrics_elig$ppg_projection <- combined_metrics_elig$sl_ppg_projection
+    } else if (fcst_source == 'dff'){
+      combined_metrics_elig <- filter(combined_metrics, !is.na(dff_ppg_projection))
+      combined_metrics_elig$ppg_projection <- combined_metrics_elig$dff_ppg_projection
+    } else if (fcst_source == 'all'){
+      combined_metrics_elig <- filter(combined_metrics, !is.na(dff_ppg_projection))
+      combined_metrics_elig$ppg_projection <- (combined_metrics_elig$sl_ppg_projection + combined_metrics_elig$dff_ppg_projection) / 2
+    } 
+    
+    #####  Build initial base model based on # of variables
+    num_decision_variables <- nrow(combined_metrics_elig)
+    lprec <- make.lp(nrow = 0, ncol = num_decision_variables)
+    
+    #####  Set function to maximize
+    lp.control(lprec, sense = "max")
+    
+    ##### Define objective function and constraints
+    
+    ##### For the model above, bring it in with the values to maximize
+    set.objfn(lprec, combined_metrics_elig$ppg_projection)
+    
+    ##### Set constraints
+    # Set salary constraint
+    add.constraint(lprec, combined_metrics_elig$salary, "<=", max_salary)
+    # Position constraint
+    add.constraint(lprec, combined_metrics_elig$is_PG, ">=", 1) # need 1+ PG
+    add.constraint(lprec, combined_metrics_elig$is_SG, ">=", 1) # need 1+ SG
+    add.constraint(lprec, combined_metrics_elig$is_SF, ">=", 1) # need 1+ SF
+    add.constraint(lprec, combined_metrics_elig$is_PF, ">=", 1) # need 1+ PF
+    add.constraint(lprec, combined_metrics_elig$is_C, ">=", 1) # need 1+ C
+    add.constraint(lprec, combined_metrics_elig$is_G, ">=", 3) # need 3+ Guards (PG, SG, G)
+    add.constraint(lprec, combined_metrics_elig$is_F, ">=", 3) # need 3+ Forwards (SF, PF, F)
+    add.constraint(lprec, combined_metrics_elig$is_G_F, ">=", 6) # need 6+ Guards / Fwds (PG, SG, SF, PF, G, F)
+    add.constraint(lprec, combined_metrics_elig$is_UTIL, "=", 8) # need 8 players overall
+    # Set to binary variables
+    set.type(lprec, columns = c(1:num_decision_variables), type = 'binary')
+    
+    ##### Solve the model
+    solve(lprec)
+    
+    ##### Get output
+    # Optimized points
+    get.objective(lprec)
+    # Players to pick
+    get.variables(lprec)
+    # add in selection column to dataset
+    combined_metrics_elig_w_select = combined_metrics_elig %>%
+      mutate(select = get.variables(lprec)) 
+    
+    # Return players to pick
+    select_team <- list(
+      
+      # The roster and stats of the optimized team
+      roster = combined_metrics_elig_w_select %>%
+        filter(select == 1) %>%
+        select(name, ppg_projection, avg_pts_per_game, position, roster_position, salary),
+      
+      # THe predicted points of the optimal team
+      predicted_points = get.objective(lprec),
+      
+      # The salary of the optimal team
+      salary = combined_metrics_elig %>%
+        mutate(select = get.variables(lprec)) %>%
+        filter(select == 1) %>%
+        pull(salary) %>% 
+        sum(),
+      
+      # The constraints 
+      constraints = 
+        data.frame(
+          constraint = c("salary", "Num PG", "Num SG", "Num SF", "Num PF", "Num C", "Num G", "Num F", "Num G or F", "Num Util"),
+          final_value = get.constraints(lprec),
+          constr_type = get.constr.type(lprec),
+          #rhs = get.rhs(lprec),
+          constrained_value = get.constr.value(lprec)
+        ),
+      
+      # Predicted vs Salary
+      all_players_chart = combined_metrics_elig_w_select %>%
+        ggplot(aes(x = salary, y = ppg_projection, color = as.factor(select))) +
+        geom_point() +
+        geom_smooth(method = 'lm', formula= y~x) +
+        theme_minimal() +
+        theme(legend.position = "none") +
+        labs(y = 'Predicted Fantasy Points', x = 'Salary', title = "Projected Points vs Salary") +
+        scale_color_manual(values=c("#c74444", "#0d903e")) +
+        geom_text(data = filter(combined_metrics_elig_w_select, select == 1), 
+                  aes(label = name), vjust = -2, check_overlap = TRUE, size = 3) +
+        ylim(0, max(combined_metrics_elig_w_select$ppg_projection) * 1.2),
+      
+      # Predicted v Historical Actuals
+      predicted_v_actual_chart = combined_metrics_elig_w_select %>%
+        ggplot(aes(x = avg_pts_per_game, y = ppg_projection, color = as.factor(select))) +
+        geom_point() +
+        geom_abline(intercept = 0, slope = 1, size = 0.5) +
+        theme_minimal() +
+        theme(legend.position = "none", axis.title.y = element_blank()) +
+        labs(x = 'Historical Averague', title = "Projected Points vs Historical Avg") +
+        scale_color_manual(values=c("#c74444", "#0d903e")) +
+        geom_text(data = filter(combined_metrics_elig_w_select, select == 1), 
+                  aes(label = name), vjust = -2, check_overlap = TRUE, size = 3) +
+        ylim(0, max(combined_metrics_elig_w_select$ppg_projection) * 1.2)
+    )
+    
+  }
+  
+  final_output <- list(
+    
+    # Add in list of metrics
+    all_player_stats = combined_metrics %>%
+      filter(!is.na(sl_ppg_projection)) %>%
+      select(position, name, salary, roster_position, avg_pts_per_game, sl_ppg_projection, dff_ppg_projection),
+    
+    # Run model for SL data only
+    sl_projection = optimize_model(fcst_source = "sl"),
+    
+    # Run model for DFF data only
+    dff_projection = optimize_model(fcst_source = "dff"),
+    
+    # Run model for Combined data
+    all_projection = optimize_model(fcst_source = "all")
   )
+  
+  # Return combined list
+  return(final_output)
+  
+}
 
-# Return output
-select_team$roster
-paste0("Predicted point total is ", select_team$predicted_points, " and salary is ", select_team$salary)
-select_team$constraints
+# Run model
+output <- optimize_daily_fantasy_basketball(max_salary, draftkings_url, dff_link)
 
-# charts
-grid.arrange(select_team$all_players_chart, select_team$predicted_v_actual_chart, ncol = 2)
+# Aggregate final output
+grid.arrange(
+  tableGrob(paste0("Type: SL, Projected:", output[[2]]$predicted_points, ", Salary: ", output[[2]]$salary)),
+  tableGrob(output[[2]][[1]], rows = NULL, theme = ttheme_minimal(base_size = 8)),
+  tableGrob(paste0("Type: DFF, Projected:", output[[3]]$predicted_points, ", Salary: ", output[[3]]$salary)),
+  tableGrob(output[[3]][[1]], rows = NULL, theme = ttheme_minimal(base_size = 8)),
+  tableGrob(paste0("Type: All, Projected:", output[[4]]$predicted_points, ", Salary: ", output[[4]]$salary)),
+  tableGrob(output[[4]][[1]], rows = NULL, theme = ttheme_minimal(base_size = 8)),
+  ncol = 2
+)
