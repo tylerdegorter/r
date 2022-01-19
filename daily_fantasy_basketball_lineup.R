@@ -81,7 +81,7 @@ optimize_daily_fantasy_basketball <- function(max_salary = 50000, draftkings_url
   
   ##### Read in Daily Fantasy Fuel Projections
   options(warn = -1) # suppress warnings
-  dff_data <- read_csv(dff_link) %>%
+  dff_data <- read.csv(dff_link) %>%
     mutate(position = ifelse(!is.na(position_alt), paste0(position,"/",position_alt), position),
            name = paste0(first_name, " ", last_name)) %>%
     select(name, position, salary, L5_ppg_floor, L5_ppg_avg, L5_ppg_max, ppg_projection) %>%
