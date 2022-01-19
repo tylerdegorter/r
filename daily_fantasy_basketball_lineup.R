@@ -15,6 +15,8 @@
 #' @param max_salary: the maximum salary that can be spent. Defaults to 50,000 as that is the DraftKings figure
 #' @param draftkings_url: the url of the salary data from DraftKings. Go into a lobby and right click "export" and copy the link
 #'   to paste here
+#' @param dff_link: the link to the dff csv (figure out an API but do this in the meantime)
+#' @param export: TRUE to export to CSV, FALSE to not
 ##############################################################################################################################
 
 # Call Packages  ################################################################
@@ -28,11 +30,11 @@ library(gridExtra)
 
 # Control Panel ################################################################
 max_salary = 50000
-draftkings_url = "https://www.draftkings.com/lineup/getavailableplayerscsv?contestTypeId=70&draftGroupId=62478"
-dff_link <- "C:\\Users\\tyler\\Downloads\\DFF_NBA_cheatsheet_2022-01-18.csv"
+draftkings_url = "https://www.draftkings.com/lineup/getavailableplayerscsv?contestTypeId=70&draftGroupId=62230"
+dff_link <- "C:\\Users\\tyler\\Downloads\\DFF_NBA_cheatsheet_2022-01-19.csv"
 
 # Build initial function
-optimize_daily_fantasy_basketball <- function(max_salary, draftkings_url, dff_link){
+optimize_daily_fantasy_basketball <- function(max_salary = 50000, draftkings_url, dff_link, export = FALSE){
   
   ################################################################################
   # Load Data ####################################################################
@@ -154,7 +156,7 @@ optimize_daily_fantasy_basketball <- function(max_salary, draftkings_url, dff_li
   #####  Combine with salary information
   combined_metrics <- draftkings_data %>%
     left_join(projections_sportsline_complete, by = c("name" = "player")) %>%
-    left_join(select(dff_data, name, dff_ppg_projection), by = c("name")) %>%
+    left_join(select(dff_data, name, dff_ppg_projection, L5_ppg_floor, L5_ppg_max), by = c("name")) %>%
     mutate(
       is_PG = ifelse(grepl("PG", roster_position) == TRUE, 1, 0),
       is_SG = ifelse(grepl("SG", roster_position) == TRUE, 1, 0),
@@ -176,13 +178,19 @@ optimize_daily_fantasy_basketball <- function(max_salary, draftkings_url, dff_li
     
     #####  Filter out those without a projected score (likely injured / not playing)
     if (fcst_source == 'sl'){
-      combined_metrics_elig <- filter(combined_metrics, !is.na(sl_ppg_projection))
+      combined_metrics_elig <- filter(combined_metrics, sl_ppg_projection > 0)
       combined_metrics_elig$ppg_projection <- combined_metrics_elig$sl_ppg_projection
     } else if (fcst_source == 'dff'){
-      combined_metrics_elig <- filter(combined_metrics, !is.na(dff_ppg_projection))
+      combined_metrics_elig <- filter(combined_metrics, dff_ppg_projection > 0)
       combined_metrics_elig$ppg_projection <- combined_metrics_elig$dff_ppg_projection
+    } else if (fcst_source == 'dff_min'){
+      combined_metrics_elig <- filter(combined_metrics, dff_ppg_projection > 0)
+      combined_metrics_elig$ppg_projection <- combined_metrics_elig$L5_ppg_floor
+    } else if (fcst_source == 'dff_max'){
+      combined_metrics_elig <- filter(combined_metrics, dff_ppg_projection > 0)
+      combined_metrics_elig$ppg_projection <- combined_metrics_elig$L5_ppg_max
     } else if (fcst_source == 'all'){
-      combined_metrics_elig <- filter(combined_metrics, !is.na(dff_ppg_projection))
+      combined_metrics_elig <- filter(combined_metrics, dff_ppg_projection > 0)
       combined_metrics_elig$ppg_projection <- (combined_metrics_elig$sl_ppg_projection + combined_metrics_elig$dff_ppg_projection) / 2
     } 
     
@@ -232,7 +240,9 @@ optimize_daily_fantasy_basketball <- function(max_salary, draftkings_url, dff_li
       # The roster and stats of the optimized team
       roster = combined_metrics_elig_w_select %>%
         filter(select == 1) %>%
-        select(name, ppg_projection, avg_pts_per_game, position, roster_position, salary),
+        mutate(fcst_model = fcst_source, date = Sys.Date()) %>%
+        select(date, fcst_model, name, ppg_projection, avg_pts_per_game, 
+               position, roster_position, salary),
       
       # THe predicted points of the optimal team
       predicted_points = get.objective(lprec),
@@ -288,7 +298,9 @@ optimize_daily_fantasy_basketball <- function(max_salary, draftkings_url, dff_li
     # Add in list of metrics
     all_player_stats = combined_metrics %>%
       filter(!is.na(sl_ppg_projection)) %>%
-      select(position, name, salary, roster_position, avg_pts_per_game, sl_ppg_projection, dff_ppg_projection),
+      mutate(date = Sys.Date()) %>%
+      select(date, position, name, salary, roster_position, avg_pts_per_game, 
+             sl_ppg_projection, dff_ppg_projection, L5_ppg_floor, L5_ppg_max),
     
     # Run model for SL data only
     sl_projection = optimize_model(fcst_source = "sl"),
@@ -296,25 +308,40 @@ optimize_daily_fantasy_basketball <- function(max_salary, draftkings_url, dff_li
     # Run model for DFF data only
     dff_projection = optimize_model(fcst_source = "dff"),
     
+    # Run model for DFF min (minimize downside)
+    dff_projection_min = optimize_model(fcst_source = "dff_min"),
+    
+    # Run model for DFF max (look for boom)
+    dff_projection_max = optimize_model(fcst_source = "dff_max"),
+    
     # Run model for Combined data
     all_projection = optimize_model(fcst_source = "all")
   )
   
+  # Export to csv?
+  if(export == TRUE){
+    
+    # Create file to be exported
+    export_file <- rbind(final_output[[2]][[1]], 
+                         final_output[[3]][[1]], 
+                         final_output[[4]][[1]],
+                         final_output[[5]][[1]],
+                         final_output[[6]][[1]])
+    
+    # Export the file
+    write_csv(x = export_file,
+              file = paste0("C:\\Users\\tyler\\OneDrive\\Desktop\\School\\Outside Class\\Daily Fantasy\\Projections\\projections_export_", 
+                     gsub("-","",Sys.Date()), "_basketball.csv"))
+    
+    write_csv(x = final_output[[1]],
+              file = paste0("C:\\Users\\tyler\\OneDrive\\Desktop\\School\\Outside Class\\Daily Fantasy\\Projections\\all_stats_", 
+                     gsub("-","",Sys.Date()), "_basketball.csv"))
+  }
+  
   # Return combined list
   return(final_output)
   
-}
+  }
 
 # Run model
-output <- optimize_daily_fantasy_basketball(max_salary, draftkings_url, dff_link)
-
-# Aggregate final output
-grid.arrange(
-  tableGrob(paste0("Type: SL, Projected:", output[[2]]$predicted_points, ", Salary: ", output[[2]]$salary)),
-  tableGrob(output[[2]][[1]], rows = NULL, theme = ttheme_minimal(base_size = 8)),
-  tableGrob(paste0("Type: DFF, Projected:", output[[3]]$predicted_points, ", Salary: ", output[[3]]$salary)),
-  tableGrob(output[[3]][[1]], rows = NULL, theme = ttheme_minimal(base_size = 8)),
-  tableGrob(paste0("Type: All, Projected:", output[[4]]$predicted_points, ", Salary: ", output[[4]]$salary)),
-  tableGrob(output[[4]][[1]], rows = NULL, theme = ttheme_minimal(base_size = 8)),
-  ncol = 2
-)
+output <- optimize_daily_fantasy_basketball(max_salary, draftkings_url, dff_link, export = TRUE)
