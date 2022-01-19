@@ -22,7 +22,6 @@
 # Call Packages  ################################################################
 library(tidyverse)
 library(rvest)
-library(fuzzyjoin)
 library(reclin)
 library(lpSolve)
 library(lpSolveAPI)
@@ -347,7 +346,7 @@ optimize_daily_fantasy_basketball <- function(max_salary = 50000, draftkings_url
   }
   
   # Append combined exported file
-  final_output[[7]] <- export_file
+  final_output$export_file <- export_file
   
   # Return combined list
   return(final_output)
