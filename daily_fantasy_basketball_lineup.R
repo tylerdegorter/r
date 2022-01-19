@@ -29,9 +29,13 @@ library(lpSolveAPI)
 library(gridExtra)
 
 # Control Panel ################################################################
+setwd("C:\\Users\\tyler\\OneDrive\\Desktop\\School\\Outside Class\\Daily Fantasy\\Projections\\")
 max_salary = 50000
 draftkings_url = "https://www.draftkings.com/lineup/getavailableplayerscsv?contestTypeId=70&draftGroupId=62230"
 dff_link <- "C:\\Users\\tyler\\Downloads\\DFF_NBA_cheatsheet_2022-01-19.csv"
+
+# Remove DFF file
+# file.remove(dff_link)
 
 # Build initial function
 optimize_daily_fantasy_basketball <- function(max_salary = 50000, draftkings_url, dff_link, export = FALSE){
@@ -76,6 +80,7 @@ optimize_daily_fantasy_basketball <- function(max_salary = 50000, draftkings_url
   names(projections_sportsline) <- tolower(names(projections_sportsline))
   
   ##### Read in Daily Fantasy Fuel Projections
+  options(warn = -1) # suppress warnings
   dff_data <- read_csv(dff_link) %>%
     mutate(position = ifelse(!is.na(position_alt), paste0(position,"/",position_alt), position),
            name = paste0(first_name, " ", last_name)) %>%
@@ -83,18 +88,21 @@ optimize_daily_fantasy_basketball <- function(max_salary = 50000, draftkings_url
     mutate(name = gsub("`", "", name),
            name = gsub("'", "", name)) %>%
     rename(dff_ppg_projection = ppg_projection)
+  options(warn = 0) # turn warnings back on
   
   #####  Read in Basketball Reference data for 3pt pct
   html_document_br <- read_html("https://www.basketball-reference.com/leagues/NBA_2022_totals.html#totals_stats::fg3_pct")
   three_pt_pct <- html_table(html_document_br, fill = TRUE)[[1]] %>%
     filter(Player != 'Player') %>%
-    mutate(three_pt_percent = ifelse(`3P%` == '', 0, `3P%`)) %>%
-    mutate(three_pt_percent = as.numeric(three_pt_percent),
-           three_pt_att = as.numeric(`3PA`),
-           FGA = as.numeric(FGA)) %>%
-    mutate(three_pt_apt_pct = three_pt_att / FGA) %>%
-    select(Player, Tm, three_pt_percent, three_pt_apt_pct) %>%
-    rename(player = Player, tm = Tm) %>%
+    group_by(Player) %>%
+    mutate(three_pt_att = as.integer(ifelse(`3PA` == '', 0, `3PA`)),
+           three_pt = as.integer(ifelse(`3P` == '', 0, `3P`)),
+           FGA = as.integer(ifelse(FGA == '', 0, FGA))) %>%
+    summarize(three_pt_att = sum(three_pt_att), three_pt = sum(three_pt), FGA = sum(FGA)) %>%
+    mutate(three_pt_percent = ifelse(three_pt_att == 0, 0, three_pt / three_pt_att), 
+           three_pt_apt_pct = ifelse(FGA == 0, 0, three_pt_att / FGA)) %>%
+    select(Player, three_pt_percent, three_pt_apt_pct) %>%
+    rename(player = Player) %>%
     mutate(player = iconv(player, from="UTF-8", to="ASCII//TRANSLIT")) %>%
     mutate(player = gsub("`", "", player),
            player = gsub("'", "", player))
@@ -132,9 +140,9 @@ optimize_daily_fantasy_basketball <- function(max_salary = 50000, draftkings_url
   
   #####  Bring in projected three points based on historical 3p % and projected attempted field goals
   projections_sportsline_b <- projections_sportsline %>%
-    left_join(select(three_pt_pct, -tm), by = c("player")) %>%
+    left_join(three_pt_pct, by = c("player")) %>%
     mutate(three_pt_made = fga * three_pt_percent * three_pt_apt_pct) %>%
-    select(-fga, -three_pt_percent, -tm)
+    select(-fga, -three_pt_percent)
   
   #####  Build out the points projections by players
   projections_sportsline_complete <- projections_sportsline_b %>%
@@ -318,25 +326,28 @@ optimize_daily_fantasy_basketball <- function(max_salary = 50000, draftkings_url
     all_projection = optimize_model(fcst_source = "all")
   )
   
+  # Create file to be exported
+  export_file <- rbind(final_output[[2]][[1]], 
+                       final_output[[3]][[1]], 
+                       final_output[[4]][[1]],
+                       final_output[[5]][[1]],
+                       final_output[[6]][[1]])
+  
   # Export to csv?
   if(export == TRUE){
     
-    # Create file to be exported
-    export_file <- rbind(final_output[[2]][[1]], 
-                         final_output[[3]][[1]], 
-                         final_output[[4]][[1]],
-                         final_output[[5]][[1]],
-                         final_output[[6]][[1]])
-    
     # Export the file
     write_csv(x = export_file,
-              file = paste0("C:\\Users\\tyler\\OneDrive\\Desktop\\School\\Outside Class\\Daily Fantasy\\Projections\\projections_export_", 
+              file = paste0(getwd(),"\\projections_export_", 
                      gsub("-","",Sys.Date()), "_basketball.csv"))
     
     write_csv(x = final_output[[1]],
-              file = paste0("C:\\Users\\tyler\\OneDrive\\Desktop\\School\\Outside Class\\Daily Fantasy\\Projections\\all_stats_", 
+              file = paste0(getwd(),"\\all_stats_", 
                      gsub("-","",Sys.Date()), "_basketball.csv"))
   }
+  
+  # Append combined exported file
+  final_output[[7]] <- export_file
   
   # Return combined list
   return(final_output)
